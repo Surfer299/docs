@@ -84,3 +84,109 @@
     </div>
     <div class="toast-body"></div>
 </div>
+
+<script>
+function initializeApprovalComponent(processApiUrl, refreshApiUrl, requireCommentOnReject = true) {
+    $(document).ready(function () {
+        // Initialize Bootstrap 4 toast
+        $('#approvalToast').toast({ autohide: true, delay: 5000 });
+
+        // Handle Approve/Reject button click
+        $('.approve-reject-btn').click(function () {
+            const row = $(this).closest('tr');
+            const action = $(this).data('action');
+            const approvalId = $(this).data('approval-id');
+            const transactionId = $(this).data('transaction-id');
+            const commentPanel = $('#commentPanel-' + approvalId);
+
+            // Hide all other comment panels
+            $('.comment-row .collapse').not(commentPanel).collapse('hide');
+
+            // Update comment required label
+            if (requireCommentOnReject && action === 'Reject') {
+                commentPanel.find('.comment-required').show();
+            } else {
+                commentPanel.find('.comment-required').hide();
+            }
+
+            // Store action in comment panel
+            commentPanel.data('action', action);
+            commentPanel.data('approval-id', approvalId);
+            commentPanel.data('transaction-id', transactionId);
+        });
+
+        // Handle Submit button click
+        $('.submit-comment-btn').click(function () {
+            const row = $(this).closest('tr');
+            const commentPanel = row.find('.collapse');
+            const action = commentPanel.data('action');
+            const approvalId = commentPanel.data('approval-id');
+            const transactionId = commentPanel.data('transaction-id');
+            const comment = row.find('.comment-input').val().trim();
+
+            if (requireCommentOnReject && action === 'Reject' && !comment) {
+                $('#approvalToast .toast-body').text('A comment is required when rejecting an approval.');
+                $('#approvalToast .toast-header').addClass('bg-danger text-white').removeClass('bg-success');
+                $('#approvalToast').toast('show');
+                return;
+            }
+
+            const data = {
+                approvalId: approvalId,
+                transactionId: transactionId,
+                action: action,
+                comment: comment
+            };
+
+            $.ajax({
+                url: processApiUrl,
+                type: 'POST',
+                data: JSON.stringify(data),
+                contentType: 'application/json; charset=utf-8',
+                headers: {
+                    'RequestVerificationToken': $('input[name="__RequestVerificationToken"]').val()
+                },
+                success: function (response) {
+                    if (response.success) {
+                        // Hide comment panel
+                        commentPanel.collapse('hide');
+                        // Refresh the approval view
+                        $.ajax({
+                            url: refreshApiUrl + '?transactionId=' + encodeURIComponent(transactionId),
+                            type: 'GET',
+                            success: function (html) {
+                                $('#pendingApprovalsCard').replaceWith(html);
+                                // Reinitialize event handlers
+                                initializeApprovalComponent(processApiUrl, refreshApiUrl, requireCommentOnReject);
+                                $('#approvalToast .toast-body').text(action + ' action submitted successfully.');
+                                $('#approvalToast .toast-header').addClass('bg-success text-white').removeClass('bg-danger');
+                                $('#approvalToast').toast('show');
+                            },
+                            error: function () {
+                                $('#approvalToast .toast-body').text('Failed to refresh the approval view.');
+                                $('#approvalToast .toast-header').addClass('bg-danger text-white').removeClass('bg-success');
+                                $('#approvalToast').toast('show');
+                            }
+                        });
+                    } else {
+                        $('#approvalToast .toast-body').text('Error: ' + response.message);
+                        $('#approvalToast .toast-header').addClass('bg-danger text-white').removeClass('bg-success');
+                        $('#approvalToast').toast('show');
+                    }
+                },
+                error: function () {
+                    $('#approvalToast .toast-body').text('An error occurred while processing the request.');
+                    $('#approvalToast .toast-header').addClass('bg-danger text-white').removeClass('bg-success');
+                    $('#approvalToast').toast('show');
+                }
+            });
+        });
+
+        // Handle Cancel button click
+        $('.cancel-comment-btn').click(function () {
+            const row = $(this).closest('tr');
+            row.find('.comment-input').val(''); // Clear comment
+        });
+    });
+}
+</script>
